@@ -115,7 +115,7 @@ async function loadKnownFaces() {
       const label = labelFromFilename(file);
       if (!label) return;
       if (!labelMap.has(label)) labelMap.set(label, []);
-      labelMap.get(label).push(`/known/${file}`);
+      labelMap.get(label).push(`/known/${encodeURIComponent(file)}`);
     });
 
     const labeledDescriptors = [];
