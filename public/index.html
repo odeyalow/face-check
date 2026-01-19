@@ -1,0 +1,58 @@
+﻿<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Face Mood</title>
+    <style>
+      body { font-family: system-ui; padding: 16px; }
+      .controls { display:flex; gap:8px; flex-wrap:wrap; margin: 12px 0 16px; }
+      .controls input { padding: 8px 10px; min-width: 320px; }
+      .controls button { padding: 8px 12px; }
+      .row { display:flex; gap:16px; align-items:flex-start; flex-wrap:wrap; }
+      video, canvas { width: 480px; max-width: 100%; border-radius: 12px; background:#111; }
+      .card { padding: 12px 14px; border: 1px solid #ddd; border-radius: 12px; min-width: 260px; }
+      .big { font-size: 22px; font-weight: 700; }
+      .muted { color:#666; }
+      .hidden { display: none; }
+    </style>
+  </head>
+  <body>
+    <h2>Real-time Mood (webcam / RTSP)</h2>
+
+    <div class="controls">
+      <input id="rtspUrl" type="text" placeholder="rtsp://user:pass@host:554/stream" />
+      <button id="connectRtsp">Подключить RTSP</button>
+      <button id="useWebcam">Веб-камера</button>
+    </div>
+
+    <div class="row">
+      <div>
+        <video id="video" autoplay muted playsinline></video>
+        <canvas id="stream" class="hidden"></canvas>
+        <canvas id="overlay"></canvas>
+      </div>
+
+      <div class="card">
+        <div class="muted">Текущее настроение</div>
+        <div id="mood" class="big">—</div>
+        <div class="muted" style="margin-top:10px;">Name</div>
+        <div id="name">--</div>
+        <div class="muted" style="margin-top:10px;">Уверенность</div>
+        <div id="conf">—</div>
+        <div class="muted" style="margin-top:10px;">FPS (примерно)</div>
+        <div id="fps">-</div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px;">
+      <div class="muted">Logs (every 5s)</div>
+      <div id="logs"></div>
+    </div>
+
+    <script defer src="https://unpkg.com/face-api.js@0.22.2/dist/face-api.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/rtsp-relay@1.9.0/browser/index.js"></script>
+    <script defer src="./app.js"></script>
+  </body>
+</html>
+
