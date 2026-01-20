@@ -62,7 +62,7 @@ app.ws("/api/stream", (ws, req) => {
     return;
   }
 
-  proxy({ url: rtspUrl, transport: "tcp", verbose: true, useNativeFFmpeg: true })(ws);
+  proxy({ url: rtspUrl, transport: "tcp", useNativeFFmpeg: true })(ws);
 });
 
 app.listen(3000, () => console.log("http://localhost:3000"));

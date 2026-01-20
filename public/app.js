@@ -19,6 +19,7 @@ let faceMatcher = null;
 let recognitionReady = false;
 let lastName = "--";
 let lastMood = "--";
+const faceSourceCanvas = document.createElement("canvas");
 
 function bestExpression(expressions) {
   let bestKey = "neutral";
@@ -146,8 +147,8 @@ let lastTs = performance.now();
 let frames = 0;
 
 function syncOverlaySize() {
-  const width = sourceEl === video ? video.videoWidth : sourceEl.width;
-  const height = sourceEl === video ? video.videoHeight : sourceEl.height;
+  const width = sourceEl === video ? video.videoWidth : (sourceEl.width || sourceEl.clientWidth);
+  const height = sourceEl === video ? video.videoHeight : (sourceEl.height || sourceEl.clientHeight);
 
   if (!width || !height) return false;
   if (canvas.width !== width || canvas.height !== height) {
@@ -155,6 +156,20 @@ function syncOverlaySize() {
     canvas.height = height;
   }
   return true;
+}
+
+function getDetectionSource() {
+  if (sourceEl === video) return video;
+  const width = sourceEl.width || sourceEl.clientWidth;
+  const height = sourceEl.height || sourceEl.clientHeight;
+  if (!width || !height) return null;
+  if (faceSourceCanvas.width !== width || faceSourceCanvas.height !== height) {
+    faceSourceCanvas.width = width;
+    faceSourceCanvas.height = height;
+  }
+  const ctx = faceSourceCanvas.getContext("2d");
+  ctx.drawImage(sourceEl, 0, 0, width, height);
+  return faceSourceCanvas;
 }
 
 async function loop() {
@@ -165,7 +180,13 @@ async function loop() {
     return;
   }
 
-  let detection = faceapi.detectSingleFace(sourceEl, opts);
+  const detectionSource = getDetectionSource();
+  if (!detectionSource) {
+    setTimeout(loop, 120);
+    return;
+  }
+
+  let detection = faceapi.detectSingleFace(detectionSource, opts);
   if (recognitionReady) {
     detection = detection.withFaceLandmarks().withFaceDescriptor();
   }
