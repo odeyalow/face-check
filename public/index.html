@@ -3,50 +3,65 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Face Mood</title>
+    <title>Mood Logger</title>
     <style>
       body { font-family: system-ui; padding: 16px; }
-      .controls { display:flex; gap:8px; flex-wrap:wrap; margin: 12px 0 16px; }
-      .controls input { padding: 8px 10px; min-width: 320px; }
+      .controls { display:flex; gap:10px; flex-wrap:wrap; margin: 12px 0 16px; align-items:center; }
+      .controls input, .controls select { padding: 8px 10px; min-width: 220px; }
       .controls button { padding: 8px 12px; }
+      .controls .rtsp-row { display:flex; gap:10px; flex-wrap:wrap; width:100%; }
+      .controls .rtsp-row > * { flex: 1 1 200px; }
       .row { display:flex; gap:16px; align-items:flex-start; flex-wrap:wrap; }
       video, canvas { width: 480px; max-width: 100%; border-radius: 12px; background:#111; }
       .card { padding: 12px 14px; border: 1px solid #ddd; border-radius: 12px; min-width: 260px; }
       .big { font-size: 22px; font-weight: 700; }
       .muted { color:#666; }
       .hidden { display: none; }
+      .status { padding: 6px 10px; border: 1px dashed #bbb; border-radius: 10px; color:#444; font-size: 13px; }
     </style>
   </head>
   <body>
-    <h2>Real-time Mood (webcam / RTSP)</h2>
+    <h2>Mood Logger</h2>
 
     <div class="controls">
-      <input id="rtspUrl" type="text" placeholder="rtsp://user:pass@host:554/stream" />
-      <button id="connectRtsp">Подключить RTSP</button>
-      <button id="useWebcam">Веб-камера</button>
+      <div class="rtsp-row">
+        <input id="rtspName" type="text" placeholder="Имя камеры" />
+        <input id="rtspUrl" type="text" placeholder="rtsp://user:pass@host:554/stream" />
+        <button id="addRtsp">Добавить камеру</button>
+      </div>
+      <div class="rtsp-row">
+        <select id="rtspSelect">
+          <option value="">Выбрать камеру</option>
+        </select>
+        <button id="connectRtsp">Подключить RTSP</button>
+        <button id="deleteRtsp">Удалить камеру</button>
+        <button id="useWebcam">Веб-камера</button>
+        <button id="clearLogs">Очистить логи</button>
+      </div>
     </div>
 
     <div class="row">
       <div>
-        <video id="video" autoplay muted playsinline></video>
-        <canvas id="stream" class="hidden"></canvas>
-        <canvas id="overlay"></canvas>
+        <div id="loadingStatus" class="status hidden" style="margin-bottom:8px;">Загрузка камеры...</div>
+        <div id="mediaWrap" class="hidden">
+          <video id="video" autoplay muted playsinline></video>
+          <canvas id="stream" class="hidden"></canvas>
+          <canvas id="overlay"></canvas>
+        </div>
       </div>
 
       <div class="card">
         <div class="muted">Текущее настроение</div>
         <div id="mood" class="big">—</div>
-        <div class="muted" style="margin-top:10px;">Name</div>
+        <div class="muted" style="margin-top:10px;">Имя</div>
         <div id="name">--</div>
-        <div class="muted" style="margin-top:10px;">Уверенность</div>
-        <div id="conf">—</div>
-        <div class="muted" style="margin-top:10px;">FPS (примерно)</div>
+        <div class="muted" style="margin-top:10px;">Примерные кадры в секунду</div>
         <div id="fps">-</div>
       </div>
     </div>
 
     <div class="card" style="margin-top:16px;">
-      <div class="muted">Logs (every 5s)</div>
+      <div class="muted">Изменения</div>
       <div id="logs"></div>
     </div>
 
@@ -55,4 +70,3 @@
     <script defer src="./app.js"></script>
   </body>
 </html>
-
