@@ -1,3 +1,6 @@
+﻿import { createCameraController } from "./modules/cameras.js";
+import { createObservation } from "./modules/observation.js";
+
 const video = document.getElementById("video");
 const streamCanvas = document.getElementById("stream");
 const canvas = document.getElementById("overlay");
@@ -12,9 +15,9 @@ const rtspNameInput = document.getElementById("rtspName");
 const rtspInput = document.getElementById("rtspUrl");
 const addRtspBtn = document.getElementById("addRtsp");
 const rtspSelect = document.getElementById("rtspSelect");
+const rtspEmptyEl = document.getElementById("rtspEmpty");
 const connectRtspBtn = document.getElementById("connectRtsp");
 const useWebcamBtn = document.getElementById("useWebcam");
-const clearLogsBtn = document.getElementById("clearLogs");
 const deleteRtspBtn = document.getElementById("deleteRtsp");
 const observationToggleBtn = document.getElementById("observationToggle");
 const observationResultsEl = document.getElementById("observationResults");
@@ -23,11 +26,10 @@ const observationTopMoodEl = document.getElementById("observationTopMood");
 const observationPeopleSelectEl = document.getElementById("observationPeopleSelect");
 const observationPeopleEl = document.getElementById("observationPeople");
 const clearObservationBtn = document.getElementById("clearObservation");
+const clearLogsBtn = document.getElementById("clearLogs");
 
 const MODEL_URL = "/models";
 
-let webcamStream = null;
-let player = null;
 let sourceEl = video;
 let faceMatcher = null;
 let recognitionReady = false;
@@ -43,13 +45,45 @@ let knownFacesLastAttempt = 0;
 const faceSourceCanvas = document.createElement("canvas");
 let loopStarted = false;
 
-let observationActive = false;
-let observationStart = 0;
-let observationPeople = new Map();
-let observationCurrentName = null;
-let observationCurrentMood = null;
-let observationCurrentAt = 0;
-let observationDurations = new Map();
+function moodLabel(key) {
+  const map = {
+    neutral: "Нейтральный",
+    happy: "Счастливый",
+    sad: "Грустный",
+    angry: "Злой"
+  };
+  return map[key] || key;
+}
+
+const observation = createObservation({
+  logsEl,
+  observationResultsEl,
+  observationDurationEl,
+  observationTopMoodEl,
+  observationPeopleEl,
+  observationPeopleSelectEl,
+  observationToggleBtn,
+  clearObservationBtn,
+  moodLabel
+});
+
+const cameraController = createCameraController({
+  video,
+  streamCanvas,
+  loadingStatusEl,
+  mediaWrapEl,
+  rtspNameInput,
+  rtspInput,
+  addRtspBtn,
+  rtspSelect,
+  rtspEmptyEl,
+  connectRtspBtn,
+  deleteRtspBtn,
+  useWebcamBtn,
+  onSourceChange: (el) => {
+    sourceEl = el;
+  }
+});
 
 function bestExpression(expressions) {
   let bestKey = "neutral";
@@ -66,89 +100,6 @@ function bestExpression(expressions) {
   if (!allowed.includes(bestKey)) bestKey = "neutral";
 
   return { bestKey, bestVal };
-}
-
-function stopWebcam() {
-  if (!webcamStream) return;
-  webcamStream.getTracks().forEach((track) => track.stop());
-  webcamStream = null;
-  video.srcObject = null;
-}
-
-function setLoadingStatus(isLoading, message = "Загрузка камеры...", isError = false) {
-  if (!loadingStatusEl) return;
-  loadingStatusEl.classList.toggle("hidden", !isLoading);
-  loadingStatusEl.textContent = message;
-  loadingStatusEl.classList.toggle("error", isError);
-  if (mediaWrapEl) mediaWrapEl.classList.toggle("hidden", isLoading);
-}
-
-function syncAddButtonState() {
-  if (!addRtspBtn) return;
-  const hasUrl = Boolean(rtspInput && rtspInput.value.trim());
-  addRtspBtn.disabled = !hasUrl;
-}
-
-async function startWebcam() {
-  if (player?.destroy) player.destroy();
-  player = null;
-  stopWebcam();
-  setLoadingStatus(true);
-
-  const stream = await navigator.mediaDevices.getUserMedia({
-    video: { width: 640, height: 480 },
-    audio: false
-  });
-  webcamStream = stream;
-  video.srcObject = stream;
-
-  const timeoutMs = 12000;
-  await Promise.race([
-    new Promise((res) => (video.onloadedmetadata = res)),
-    new Promise((_, rej) => setTimeout(() => rej(new Error("webcam timeout")), timeoutMs))
-  ]);
-  video.play();
-
-  video.classList.remove("hidden");
-  streamCanvas.classList.add("hidden");
-  sourceEl = video;
-  setLoadingStatus(false);
-}
-
-async function startRtsp(rtspUrl) {
-  if (!rtspUrl || !window.loadPlayer) return;
-
-  stopWebcam();
-  if (player?.destroy) player.destroy();
-  setLoadingStatus(true);
-
-  const wsProto = location.protocol === "https:" ? "wss://" : "ws://";
-  const wsUrl = `${wsProto}${location.host}/api/stream?url=${encodeURIComponent(rtspUrl)}`;
-
-  video.classList.add("hidden");
-  streamCanvas.classList.remove("hidden");
-  sourceEl = streamCanvas;
-
-  player = await window.loadPlayer({
-    url: wsUrl,
-    canvas: streamCanvas,
-    audio: false,
-    disableGl: true
-  });
-
-  const timeoutMs = 12000;
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (streamCanvas.width > 0 && streamCanvas.height > 0) break;
-    await new Promise((res) => setTimeout(res, 100));
-  }
-
-  if (!streamCanvas.width || !streamCanvas.height) {
-    setLoadingStatus(true, "Не удалось загрузить поток", true);
-    if (mediaWrapEl) mediaWrapEl.classList.add("hidden");
-    return;
-  }
-  setLoadingStatus(false);
 }
 
 async function loadModels() {
@@ -285,7 +236,7 @@ async function loop() {
 
       const { bestKey, bestVal } = bestExpression(result.expressions);
       const nowPerf = performance.now();
-      if (moodEl) moodEl.textContent = bestKey;
+      if (moodEl) moodEl.textContent = moodLabel(bestKey);
       if (confEl) confEl.textContent = (bestVal * 100).toFixed(1) + "%";
       lastMood = bestKey;
       let currentName = null;
@@ -311,25 +262,19 @@ async function loop() {
           pendingSince = nowPerf;
         } else if (nowPerf - pendingSince >= 3000) {
           if (currentName !== lastLoggedName || bestKey !== lastLoggedMood) {
-            if (observationActive) {
-              addLogLine(currentName, bestKey);
-            }
+            if (observation.isActive()) observation.addLogLine(currentName, bestKey);
             lastLoggedName = currentName;
             lastLoggedMood = bestKey;
           }
         }
-        if (observationActive) {
-          updateObservationTiming(currentName, bestKey, nowPerf);
-        }
+        observation.updateTiming(currentName, bestKey, nowPerf);
       } else {
         lastLoggedName = null;
         lastLoggedMood = null;
         pendingName = null;
         pendingMood = null;
         pendingSince = 0;
-        if (observationActive) {
-          flushObservationTiming(nowPerf);
-        }
+        observation.flushTiming(nowPerf);
       }
     } else {
       if (moodEl) moodEl.textContent = "--";
@@ -342,9 +287,7 @@ async function loop() {
       pendingName = null;
       pendingMood = null;
       pendingSince = 0;
-      if (observationActive) {
-        flushObservationTiming(performance.now());
-      }
+      observation.flushTiming(performance.now());
     }
   } catch (err) {
     console.error("Detection loop error:", err);
@@ -357,7 +300,7 @@ async function loop() {
   await loadModels();
   await loadKnownFaces();
   try {
-    await startWebcam();
+    await cameraController.startWebcam();
   } catch (_err) {
     // Ignore webcam errors (insecure context or no device).
   }
@@ -367,419 +310,8 @@ async function loop() {
   }
 })();
 
-function formatTime(date) {
-  const hh = String(date.getHours()).padStart(2, "0");
-  const mm = String(date.getMinutes()).padStart(2, "0");
-  const ss = String(date.getSeconds()).padStart(2, "0");
-  return `${hh}:${mm}:${ss}`;
-}
-
-function addLogLine(name, mood) {
-  if (!logsEl) return;
-  const time = formatTime(new Date());
-  const line = `${name} ${mood} ${time}`;
-  const div = document.createElement("div");
-  div.textContent = line;
-  logsEl.prepend(div);
-}
-
-function formatDurationLabel(ms) {
-  if (!Number.isFinite(ms)) return "";
-  const total = Math.max(0, Math.round(ms / 1000));
-  const hh = Math.floor(total / 3600);
-  const mm = Math.floor((total % 3600) / 60);
-  const ss = total % 60;
-  if (hh > 0) return `${hh} ч ${String(mm).padStart(2, "0")} мин ${String(ss).padStart(2, "0")} сек`;
-  if (mm > 0) return `${mm} мин ${String(ss).padStart(2, "0")} сек`;
-  return `${ss} сек`;
-}
-
-function addDuration(name, mood, deltaMs) {
-  if (!observationDurations.has(name)) observationDurations.set(name, new Map());
-  const moodMap = observationDurations.get(name);
-  moodMap.set(mood, (moodMap.get(mood) || 0) + deltaMs);
-}
-
-function updateObservationTiming(name, mood, nowPerf) {
-  if (!observationCurrentName) {
-    observationCurrentName = name;
-    observationCurrentMood = mood;
-    observationCurrentAt = nowPerf;
-    return;
-  }
-
-  const delta = nowPerf - observationCurrentAt;
-  if (delta > 0) {
-    addDuration(observationCurrentName, observationCurrentMood, delta);
-  }
-
-  if (observationCurrentName !== name || observationCurrentMood !== mood) {
-    observationCurrentName = name;
-    observationCurrentMood = mood;
-  }
-  observationCurrentAt = nowPerf;
-}
-
-function flushObservationTiming(nowPerf) {
-  if (!observationCurrentName || !observationCurrentMood || !observationCurrentAt) return;
-  const delta = nowPerf - observationCurrentAt;
-  if (delta > 0) {
-    addDuration(observationCurrentName, observationCurrentMood, delta);
-  }
-  observationCurrentName = null;
-  observationCurrentMood = null;
-  observationCurrentAt = 0;
-}
-
-function topMoodFromMap(map) {
-  let bestMood = null;
-  let bestMs = null;
-  for (const [mood, ms] of map.entries()) {
-    if (bestMs === null || ms > bestMs) {
-      bestMs = ms;
-      bestMood = mood;
-    }
-  }
-  return { bestMood, bestMs };
-}
-
-function buildOverallMoodTotals() {
-  const totals = new Map();
-  for (const moods of observationDurations.values()) {
-    for (const [mood, ms] of moods.entries()) {
-      totals.set(mood, (totals.get(mood) || 0) + ms);
-    }
-  }
-  return totals;
-}
-
-function topMoodFromMap(map) {
-  let bestMood = null;
-  let bestCount = -1;
-  for (const [mood, count] of map.entries()) {
-    if (count > bestCount) {
-      bestCount = count;
-      bestMood = mood;
-    }
-  }
-  return { bestMood, bestCount };
-}
-
-function renderObservationResults() {
-  if (!observationResultsEl) return;
-  observationResultsEl.classList.remove("hidden");
-  const durationText = observationStart ? formatDurationLabel(Date.now() - observationStart) : "--";
-  if (observationDurationEl) observationDurationEl.textContent = `Длительность: ${durationText}`;
-
-  const overallTotals = buildOverallMoodTotals();
-  const overallTop = topMoodFromMap(overallTotals);
-  if (observationTopMoodEl) {
-    if (overallTop.bestMood) {
-      const label = formatDurationLabel(overallTop.bestMs);
-      observationTopMoodEl.textContent = label
-        ? `Самая частая эмоция за наблюдение: ${overallTop.bestMood} - ${label}`
-        : `Самая частая эмоция за наблюдение: ${overallTop.bestMood}`;
-    } else {
-      observationTopMoodEl.textContent = "Самая частая эмоция за наблюдение: --";
-    }
-  }
-
-  if (observationPeopleEl) {
-    observationPeopleEl.innerHTML = "";
-  }
-
-  if (observationDurations.size === 0) {
-    if (observationPeopleEl) observationPeopleEl.textContent = "Люди: --";
-    if (observationPeopleSelectEl) observationPeopleSelectEl.classList.add("hidden");
-    return;
-  }
-
-  if (observationPeopleSelectEl) {
-    observationPeopleSelectEl.innerHTML = "";
-    const allOpt = document.createElement("option");
-    allOpt.value = "__all__";
-    allOpt.textContent = "Все люди";
-    observationPeopleSelectEl.appendChild(allOpt);
-  }
-
-  for (const [name, moods] of observationDurations.entries()) {
-    const personTop = topMoodFromMap(moods);
-    if (observationPeopleSelectEl) {
-      const opt = document.createElement("option");
-      opt.value = name;
-      opt.textContent = name;
-      observationPeopleSelectEl.appendChild(opt);
-    }
-
-    const personBlock = document.createElement("div");
-    personBlock.className = "person-card";
-    personBlock.dataset.person = name;
-    const title = document.createElement("div");
-    title.className = "person-title";
-    title.textContent = name;
-    personBlock.appendChild(title);
-    if (observationPeopleEl) observationPeopleEl.appendChild(personBlock);
-
-    for (const [mood, ms] of moods.entries()) {
-      const line = document.createElement("div");
-      line.textContent = `${mood} - ${formatDurationLabel(ms)}`;
-      personBlock.appendChild(line);
-    }
-
-    if (personTop.bestMood) {
-      const topLine = document.createElement("div");
-      const label = formatDurationLabel(personTop.bestMs);
-      topLine.textContent = label
-        ? `Самая частая эмоция у ${name}: ${personTop.bestMood} - ${label}`
-        : `Самая частая эмоция у ${name}: ${personTop.bestMood}`;
-      personBlock.appendChild(topLine);
-    }
-  }
-
-  if (observationPeopleSelectEl) {
-    observationPeopleSelectEl.classList.toggle("hidden", observationPeopleSelectEl.options.length <= 2);
-    observationPeopleSelectEl.value = "__all__";
-  }
-  applyObservationFilter();
-}
-
-function startObservation() {
-  observationActive = true;
-  observationStart = Date.now();
-  observationPeople = new Map();
-  observationCurrentName = null;
-  observationCurrentMood = null;
-  observationCurrentAt = 0;
-  observationDurations = new Map();
-  lastLoggedName = null;
-  lastLoggedMood = null;
-  pendingName = null;
-  pendingMood = null;
-  pendingSince = 0;
-  if (observationResultsEl) observationResultsEl.classList.add("hidden");
-  if (observationToggleBtn) observationToggleBtn.textContent = "Остановить наблюдение";
-}
-
-function stopObservation() {
-  observationActive = false;
-  flushObservationTiming(performance.now());
-  renderObservationResults();
-  if (observationToggleBtn) observationToggleBtn.textContent = "Начать наблюдение";
-}
-
-function applyObservationFilter() {
-  if (!observationPeopleEl) return;
-  const selected = observationPeopleSelectEl?.value || "__all__";
-  const blocks = observationPeopleEl.querySelectorAll("[data-person]");
-  blocks.forEach((block) => {
-    block.classList.toggle("hidden", selected !== "__all__" && block.dataset.person !== selected);
-  });
-}
-
-function loadRtspList() {
-  try {
-    const raw = localStorage.getItem("rtspUrls");
-    const list = raw ? JSON.parse(raw) : [];
-    if (!Array.isArray(list)) return [];
-    if (list.length === 0) return [];
-    if (typeof list[0] === "string") {
-      return list.map((url, idx) => ({
-        url,
-        name: idx === 0 ? "Без названия" : `Без названия ${idx}`
-      }));
-    }
-    return list.filter((item) => item && typeof item.url === "string");
-  } catch (_err) {
-    return [];
-  }
-}
-
-function saveRtspList(list) {
-  localStorage.setItem("rtspUrls", JSON.stringify(list));
-}
-
-function normalizeName(name) {
-  return name ? name.trim() : "";
-}
-
-function generateDefaultName(existingNames) {
-  const base = "Без названия";
-  if (!existingNames.has(base)) return base;
-  let i = 1;
-  while (existingNames.has(`${base} ${i}`)) i++;
-  return `${base} ${i}`;
-}
-
-function syncRtspSelect(list, selectedUrl) {
-  if (!rtspSelect) return;
-  rtspSelect.innerHTML = "";
-  const emptyOpt = document.createElement("option");
-  emptyOpt.value = "";
-  emptyOpt.textContent = "-- Выберите камеру --";
-  rtspSelect.appendChild(emptyOpt);
-  list.forEach((item) => {
-    const opt = document.createElement("option");
-    opt.value = item.url;
-    opt.textContent = item.name;
-    opt.title = item.url;
-    rtspSelect.appendChild(opt);
-  });
-  if (selectedUrl) rtspSelect.value = selectedUrl;
-}
-
-const savedRtspUrl = localStorage.getItem("rtspUrl");
-const rtspList = loadRtspList();
-if (savedRtspUrl && rtspInput) rtspInput.value = savedRtspUrl;
-if (savedRtspUrl && rtspNameInput) {
-  const savedItem = rtspList.find((item) => item.url === savedRtspUrl);
-  if (savedItem) rtspNameInput.value = savedItem.name;
-}
-syncRtspSelect(rtspList, savedRtspUrl || "");
-
-if (addRtspBtn) {
-  addRtspBtn.addEventListener("click", () => {
-    const rtspUrl = rtspInput?.value.trim();
-    if (!rtspUrl) return;
-    const nameRaw = normalizeName(rtspNameInput?.value);
-    const list = loadRtspList();
-    const existing = list.find((item) => item.url === rtspUrl);
-    if (existing) {
-      if (nameRaw) existing.name = nameRaw;
-    } else {
-      const existingNames = new Set(list.map((item) => item.name));
-      const name = nameRaw || generateDefaultName(existingNames);
-      list.push({ url: rtspUrl, name });
-    }
-    saveRtspList(list);
-    localStorage.setItem("rtspUrl", rtspUrl);
-    if (rtspNameInput) {
-      const current = list.find((item) => item.url === rtspUrl);
-      rtspNameInput.value = current ? current.name : "";
-    }
-    syncRtspSelect(list, rtspUrl);
-    if (rtspInput) rtspInput.value = "";
-    if (rtspNameInput) rtspNameInput.value = "";
-    syncAddButtonState();
-  });
-}
-
-if (rtspSelect) {
-  rtspSelect.addEventListener("change", async () => {
-    const rtspUrl = rtspSelect.value;
-    if (rtspInput) rtspInput.value = rtspUrl;
-    if (rtspNameInput) {
-      const item = loadRtspList().find((entry) => entry.url === rtspUrl);
-      rtspNameInput.value = item ? item.name : "";
-    }
-    if (!rtspUrl) return;
-    localStorage.setItem("rtspUrl", rtspUrl);
-    await startRtsp(rtspUrl);
-    if (!loopStarted) {
-      loopStarted = true;
-      loop();
-    }
-  });
-}
-
-if (rtspInput) {
-  rtspInput.addEventListener("input", syncAddButtonState);
-}
-
-syncAddButtonState();
-
-if (connectRtspBtn) {
-  connectRtspBtn.addEventListener("click", async () => {
-    const rtspUrl = (rtspSelect?.value || rtspInput?.value || "").trim();
-    if (!rtspUrl) return;
-    const nameRaw = normalizeName(rtspNameInput?.value);
-    localStorage.setItem("rtspUrl", rtspUrl);
-    if (rtspInput) rtspInput.value = rtspUrl;
-    const list = loadRtspList();
-    const existing = list.find((item) => item.url === rtspUrl);
-    if (existing) {
-      if (nameRaw) existing.name = nameRaw;
-    } else if (rtspSelect) {
-      const existingNames = new Set(list.map((item) => item.name));
-      const name = nameRaw || generateDefaultName(existingNames);
-      list.push({ url: rtspUrl, name });
-    }
-    if (rtspSelect) {
-      saveRtspList(list);
-      syncRtspSelect(list, rtspUrl);
-    }
-    if (rtspNameInput) {
-      const current = list.find((item) => item.url === rtspUrl);
-      rtspNameInput.value = current ? current.name : "";
-    }
-    await startRtsp(rtspUrl);
-    if (!loopStarted) {
-      loopStarted = true;
-      loop();
-    }
-  });
-}
-
-if (useWebcamBtn) {
-  useWebcamBtn.addEventListener("click", async () => {
-    await startWebcam();
-    if (!loopStarted) {
-      loopStarted = true;
-      loop();
-    }
-  });
-}
-
 if (clearLogsBtn) {
   clearLogsBtn.addEventListener("click", () => {
     if (logsEl) logsEl.textContent = "";
-  });
-}
-
-if (observationToggleBtn) {
-  observationToggleBtn.addEventListener("click", () => {
-    if (observationActive) {
-      stopObservation();
-    } else {
-      startObservation();
-    }
-  });
-}
-
-if (clearObservationBtn) {
-  clearObservationBtn.addEventListener("click", () => {
-    if (observationResultsEl) observationResultsEl.classList.add("hidden");
-    if (observationDurationEl) observationDurationEl.textContent = "Длительность: --";
-    if (observationTopMoodEl) observationTopMoodEl.textContent = "Самая частая эмоция за наблюдение: --";
-    if (observationPeopleEl) observationPeopleEl.textContent = "Люди: --";
-    if (observationPeopleSelectEl) observationPeopleSelectEl.classList.add("hidden");
-    observationPeople = new Map();
-    observationCurrentName = null;
-    observationCurrentMood = null;
-    observationCurrentAt = 0;
-    observationDurations = new Map();
-  });
-}
-
-if (observationPeopleSelectEl) {
-  observationPeopleSelectEl.addEventListener("change", applyObservationFilter);
-}
-
-if (deleteRtspBtn) {
-  deleteRtspBtn.addEventListener("click", () => {
-    const rtspUrl = rtspSelect?.value || "";
-    if (!rtspUrl) return;
-    const list = loadRtspList();
-    const item = list.find((entry) => entry.url === rtspUrl);
-    const label = item ? item.name : rtspUrl;
-    const ok = window.confirm(`Вы точно хотите удалить камеру "${label}"?`);
-    if (!ok) return;
-    const nextList = list.filter((entry) => entry.url !== rtspUrl);
-    saveRtspList(nextList);
-    syncRtspSelect(nextList, "");
-    if (rtspInput) rtspInput.value = "";
-    if (rtspNameInput) rtspNameInput.value = "";
-    if (localStorage.getItem("rtspUrl") === rtspUrl) {
-      localStorage.removeItem("rtspUrl");
-    }
   });
 }

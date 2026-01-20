@@ -1,0 +1,92 @@
+body {
+    font-family: system-ui;
+    padding: 0 20px;
+    max-width: 1240px;
+    margin: auto;
+    margin-bottom: 50px;
+}
+h2 {
+    font-size: 35px;
+    text-align: center;
+}
+.controls { display:flex; gap:10px; flex-wrap:wrap; margin: 12px 0 16px; align-items:center; }
+.controls input, .controls select { min-width: 220px; }
+.controls button { padding: 8px 12px; }
+.controls .rtsp-row { display:flex; gap:10px; flex-wrap:wrap; width:100%; }
+.controls .rtsp-row > * { flex: 1 1 200px; }
+.row { display: flex; justify-content: space-between; gap: 20px; align-items:flex-start; flex-wrap:wrap; }
+video, canvas {
+    max-width: 400px;
+    border-radius: 12px;
+    background: #111;
+    width: 100%;
+}
+#mediaWrap {
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
+}
+.video-stack {
+    position: relative;
+    width: 100%;
+    max-width: 400px;
+}
+.video-stack video,
+.video-stack canvas {
+    display: block;
+    width: 100%;
+}
+#overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: transparent;
+}
+input {
+    border-radius: 10px;
+    border: 2px solid #008B8B;
+    padding: 10px 15px;
+    font-size: 18px;
+}
+button {
+    border-radius: 10px;
+    font-size: 18px;
+    text-align: center;
+    background-color: #20B2AA;
+    color: #fff;
+    border: 2px solid #008B8B;
+    transition: 150ms ease;
+}
+button:hover {
+    background-color: #008B8B;
+}
+button:active {
+    transform: translateY(3%);
+}
+button:disabled {
+    background-color: #008B8B;
+}
+select {
+    border-radius: 10px;
+    font-size: 16px;
+    padding: 10px 15px;
+    width: 350px !important;
+    border: 2px solid #008B8B;
+}
+.card {
+    padding: 12px 14px;
+    border: 2px solid #008B8B;
+    background-color: #dbeded;
+    border-radius: 12px;
+    min-width: 350px;
+    font-size: 16px;
+}
+.big { font-size: 22px; font-weight: 700; }
+.muted { color:#666; }
+.hidden { display: none; }
+.status { padding: 6px 10px; border: 1px dashed #bbb; border-radius: 10px; color:#444; font-size: 13px; }
+.status.error { border-color:#e07a7a; color:#a33; }
+.results { margin-top: 8px; }
+.results div { margin-top: 6px; }
+.person-card { padding: 8px 10px; border: 2px solid #008B8B; border-radius: 10px; margin-top: 10px; }
+.person-title { font-weight: 600; }

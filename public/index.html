@@ -4,26 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Mood Logger</title>
-    <style>
-      body { font-family: system-ui; padding: 16px; }
-      .controls { display:flex; gap:10px; flex-wrap:wrap; margin: 12px 0 16px; align-items:center; }
-      .controls input, .controls select { padding: 8px 10px; min-width: 220px; }
-      .controls button { padding: 8px 12px; }
-      .controls .rtsp-row { display:flex; gap:10px; flex-wrap:wrap; width:100%; }
-      .controls .rtsp-row > * { flex: 1 1 200px; }
-      .row { display:flex; gap:16px; align-items:flex-start; flex-wrap:wrap; }
-      video, canvas { width: 480px; max-width: 100%; border-radius: 12px; background:#111; }
-      .card { padding: 12px 14px; border: 1px solid #ddd; border-radius: 12px; min-width: 260px; }
-      .big { font-size: 22px; font-weight: 700; }
-      .muted { color:#666; }
-      .hidden { display: none; }
-      .status { padding: 6px 10px; border: 1px dashed #bbb; border-radius: 10px; color:#444; font-size: 13px; }
-      .status.error { border-color:#e07a7a; color:#a33; }
-      .results { margin-top: 8px; }
-      .results div { margin-top: 6px; }
-      .person-card { padding: 8px 10px; border: 1px solid #eee; border-radius: 10px; margin-top: 10px; }
-      .person-title { font-weight: 600; }
-    </style>
+    <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
     <h2>Mood Logger</h2>
@@ -46,13 +27,15 @@
       </div>
     </div>
 
-    <div class="row">
+    <div class="row"> 
       <div>
         <div id="loadingStatus" class="status hidden" style="margin-bottom:8px;">Загрузка камеры...</div>
         <div id="mediaWrap" class="hidden">
-          <video id="video" autoplay muted playsinline></video>
+          <div class="video-stack">
+            <video id="video" autoplay muted playsinline></video>
+            <canvas id="overlay"></canvas>
+          </div>
           <canvas id="stream" class="hidden"></canvas>
-          <canvas id="overlay"></canvas>
         </div>
       </div>
 
@@ -86,6 +69,6 @@
 
     <script defer src="https://unpkg.com/face-api.js@0.22.2/dist/face-api.min.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/rtsp-relay@1.9.0/browser/index.js"></script>
-    <script defer src="./app.js"></script>
+    <script type="module" src="./app.js"></script>
   </body>
 </html>
