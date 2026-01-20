@@ -8,13 +8,16 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-app.use(express.static(path.join(__dirname, "public")));
+const publicDir = path.join(__dirname, "public");
+const knownDir = path.join(publicDir, "known");
+
+app.use(express.static(publicDir));
+app.use("/known", express.static(knownDir));
 
 const { proxy } = rtspRelay(app);
 const defaultRtspUrl = process.env.RTSP_URL;
 
 app.get("/api/known", (_req, res) => {
-  const knownDir = path.join(__dirname, "public", "known");
   let files = [];
 
   if (fs.existsSync(knownDir)) {
@@ -23,6 +26,10 @@ app.get("/api/known", (_req, res) => {
   }
 
   res.json({ files });
+});
+
+app.get("/known", (_req, res) => {
+  res.redirect("/api/known");
 });
 
 app.ws("/api/stream", (ws, req) => {
