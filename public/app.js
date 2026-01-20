@@ -20,6 +20,7 @@ const observationToggleBtn = document.getElementById("observationToggle");
 const observationResultsEl = document.getElementById("observationResults");
 const observationDurationEl = document.getElementById("observationDuration");
 const observationTopMoodEl = document.getElementById("observationTopMood");
+const observationPeopleSelectEl = document.getElementById("observationPeopleSelect");
 const observationPeopleEl = document.getElementById("observationPeople");
 const clearObservationBtn = document.getElementById("clearObservation");
 
@@ -489,19 +490,40 @@ function renderObservationResults() {
 
   if (observationDurations.size === 0) {
     if (observationPeopleEl) observationPeopleEl.textContent = "Люди: --";
+    if (observationPeopleSelectEl) observationPeopleSelectEl.classList.add("hidden");
     return;
+  }
+
+  if (observationPeopleSelectEl) {
+    observationPeopleSelectEl.innerHTML = "";
+    const allOpt = document.createElement("option");
+    allOpt.value = "__all__";
+    allOpt.textContent = "Все люди";
+    observationPeopleSelectEl.appendChild(allOpt);
   }
 
   for (const [name, moods] of observationDurations.entries()) {
     const personTop = topMoodFromMap(moods);
+    if (observationPeopleSelectEl) {
+      const opt = document.createElement("option");
+      opt.value = name;
+      opt.textContent = name;
+      observationPeopleSelectEl.appendChild(opt);
+    }
+
     const personBlock = document.createElement("div");
-    personBlock.textContent = name;
+    personBlock.className = "person-card";
+    personBlock.dataset.person = name;
+    const title = document.createElement("div");
+    title.className = "person-title";
+    title.textContent = name;
+    personBlock.appendChild(title);
     if (observationPeopleEl) observationPeopleEl.appendChild(personBlock);
 
     for (const [mood, ms] of moods.entries()) {
       const line = document.createElement("div");
       line.textContent = `${mood} - ${formatDurationLabel(ms)}`;
-      if (observationPeopleEl) observationPeopleEl.appendChild(line);
+      personBlock.appendChild(line);
     }
 
     if (personTop.bestMood) {
@@ -510,9 +532,15 @@ function renderObservationResults() {
       topLine.textContent = label
         ? `Самая частая эмоция у ${name}: ${personTop.bestMood} - ${label}`
         : `Самая частая эмоция у ${name}: ${personTop.bestMood}`;
-      if (observationPeopleEl) observationPeopleEl.appendChild(topLine);
+      personBlock.appendChild(topLine);
     }
   }
+
+  if (observationPeopleSelectEl) {
+    observationPeopleSelectEl.classList.toggle("hidden", observationPeopleSelectEl.options.length <= 2);
+    observationPeopleSelectEl.value = "__all__";
+  }
+  applyObservationFilter();
 }
 
 function startObservation() {
@@ -537,6 +565,15 @@ function stopObservation() {
   flushObservationTiming(performance.now());
   renderObservationResults();
   if (observationToggleBtn) observationToggleBtn.textContent = "Начать наблюдение";
+}
+
+function applyObservationFilter() {
+  if (!observationPeopleEl) return;
+  const selected = observationPeopleSelectEl?.value || "__all__";
+  const blocks = observationPeopleEl.querySelectorAll("[data-person]");
+  blocks.forEach((block) => {
+    block.classList.toggle("hidden", selected !== "__all__" && block.dataset.person !== selected);
+  });
 }
 
 function loadRtspList() {
@@ -714,12 +751,17 @@ if (clearObservationBtn) {
     if (observationDurationEl) observationDurationEl.textContent = "Длительность: --";
     if (observationTopMoodEl) observationTopMoodEl.textContent = "Самая частая эмоция за наблюдение: --";
     if (observationPeopleEl) observationPeopleEl.textContent = "Люди: --";
+    if (observationPeopleSelectEl) observationPeopleSelectEl.classList.add("hidden");
     observationPeople = new Map();
     observationCurrentName = null;
     observationCurrentMood = null;
     observationCurrentAt = 0;
     observationDurations = new Map();
   });
+}
+
+if (observationPeopleSelectEl) {
+  observationPeopleSelectEl.addEventListener("change", applyObservationFilter);
 }
 
 if (deleteRtspBtn) {

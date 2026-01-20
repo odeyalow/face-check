@@ -21,6 +21,8 @@
       .status.error { border-color:#e07a7a; color:#a33; }
       .results { margin-top: 8px; }
       .results div { margin-top: 6px; }
+      .person-card { padding: 8px 10px; border: 1px solid #eee; border-radius: 10px; margin-top: 10px; }
+      .person-title { font-weight: 600; }
     </style>
   </head>
   <body>
@@ -74,6 +76,9 @@
       <div class="results">
         <div id="observationDuration">Длительность: --</div>
         <div id="observationTopMood">Самая частая эмоция за наблюдение: --</div>
+        <select id="observationPeopleSelect" class="hidden" style="margin-top:8px;">
+          <option value="__all__">Все люди</option>
+        </select>
         <div id="observationPeople">Люди: --</div>
       </div>
       <button id="clearObservation" style="margin-top:10px;">Очистить результаты</button>
