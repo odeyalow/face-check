@@ -16,6 +16,7 @@ app.use("/known", express.static(knownDir));
 
 const { proxy } = rtspRelay(app);
 const defaultRtspUrl = process.env.RTSP_URL;
+const useNativeFfmpeg = process.env.USE_NATIVE_FFMPEG === "1";
 
 app.get("/api/known", (_req, res) => {
   let files = [];
@@ -62,7 +63,7 @@ app.ws("/api/stream", (ws, req) => {
     return;
   }
 
-  proxy({ url: rtspUrl, transport: "tcp", useNativeFFmpeg: true })(ws);
+  proxy({ url: rtspUrl, transport: "tcp", useNativeFFmpeg: useNativeFfmpeg })(ws);
 });
 
 app.listen(3000, () => console.log("http://localhost:3000"));

@@ -18,6 +18,9 @@
       .muted { color:#666; }
       .hidden { display: none; }
       .status { padding: 6px 10px; border: 1px dashed #bbb; border-radius: 10px; color:#444; font-size: 13px; }
+      .status.error { border-color:#e07a7a; color:#a33; }
+      .results { margin-top: 8px; }
+      .results div { margin-top: 6px; }
     </style>
   </head>
   <body>
@@ -37,6 +40,7 @@
         <button id="deleteRtsp">Удалить камеру</button>
         <button id="useWebcam">Веб-камера (для тестов)</button>
         <button id="clearLogs">Очистить логи</button>
+        <button id="observationToggle">Начать наблюдение</button>
       </div>
     </div>
 
@@ -63,6 +67,16 @@
     <div class="card" style="margin-top:16px;">
       <div class="muted">Изменения</div>
       <div id="logs"></div>
+    </div>
+
+    <div id="observationResults" class="card hidden" style="margin-top:16px;">
+      <div class="muted">Результаты последнего наблюдения</div>
+      <div class="results">
+        <div id="observationDuration">Длительность: --</div>
+        <div id="observationTopMood">Самая частая эмоция за наблюдение: --</div>
+        <div id="observationPeople">Люди: --</div>
+      </div>
+      <button id="clearObservation" style="margin-top:10px;">Очистить результаты</button>
     </div>
 
     <script defer src="https://unpkg.com/face-api.js@0.22.2/dist/face-api.min.js"></script>

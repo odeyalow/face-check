@@ -16,6 +16,12 @@ const connectRtspBtn = document.getElementById("connectRtsp");
 const useWebcamBtn = document.getElementById("useWebcam");
 const clearLogsBtn = document.getElementById("clearLogs");
 const deleteRtspBtn = document.getElementById("deleteRtsp");
+const observationToggleBtn = document.getElementById("observationToggle");
+const observationResultsEl = document.getElementById("observationResults");
+const observationDurationEl = document.getElementById("observationDuration");
+const observationTopMoodEl = document.getElementById("observationTopMood");
+const observationPeopleEl = document.getElementById("observationPeople");
+const clearObservationBtn = document.getElementById("clearObservation");
 
 const MODEL_URL = "/models";
 
@@ -35,6 +41,14 @@ let knownFacesLoading = false;
 let knownFacesLastAttempt = 0;
 const faceSourceCanvas = document.createElement("canvas");
 let loopStarted = false;
+
+let observationActive = false;
+let observationStart = 0;
+let observationPeople = new Map();
+let observationCurrentName = null;
+let observationCurrentMood = null;
+let observationCurrentAt = 0;
+let observationDurations = new Map();
 
 function bestExpression(expressions) {
   let bestKey = "neutral";
@@ -60,9 +74,11 @@ function stopWebcam() {
   video.srcObject = null;
 }
 
-function setLoadingStatus(isLoading) {
+function setLoadingStatus(isLoading, message = "Загрузка камеры...", isError = false) {
   if (!loadingStatusEl) return;
   loadingStatusEl.classList.toggle("hidden", !isLoading);
+  loadingStatusEl.textContent = message;
+  loadingStatusEl.classList.toggle("error", isError);
   if (mediaWrapEl) mediaWrapEl.classList.toggle("hidden", isLoading);
 }
 
@@ -85,7 +101,11 @@ async function startWebcam() {
   webcamStream = stream;
   video.srcObject = stream;
 
-  await new Promise((res) => (video.onloadedmetadata = res));
+  const timeoutMs = 12000;
+  await Promise.race([
+    new Promise((res) => (video.onloadedmetadata = res)),
+    new Promise((_, rej) => setTimeout(() => rej(new Error("webcam timeout")), timeoutMs))
+  ]);
   video.play();
 
   video.classList.remove("hidden");
@@ -115,15 +135,17 @@ async function startRtsp(rtspUrl) {
     disableGl: true
   });
 
-  const deadline = Date.now() + 5000;
+  const timeoutMs = 12000;
+  const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (streamCanvas.width > 0 && streamCanvas.height > 0) break;
     await new Promise((res) => setTimeout(res, 100));
   }
 
   if (!streamCanvas.width || !streamCanvas.height) {
-    streamCanvas.width = 640;
-    streamCanvas.height = 480;
+    setLoadingStatus(true, "Не удалось загрузить поток", true);
+    if (mediaWrapEl) mediaWrapEl.classList.add("hidden");
+    return;
   }
   setLoadingStatus(false);
 }
@@ -288,10 +310,15 @@ async function loop() {
           pendingSince = nowPerf;
         } else if (nowPerf - pendingSince >= 3000) {
           if (currentName !== lastLoggedName || bestKey !== lastLoggedMood) {
-            addLogLine(currentName, bestKey);
+            if (observationActive) {
+              addLogLine(currentName, bestKey);
+            }
             lastLoggedName = currentName;
             lastLoggedMood = bestKey;
           }
+        }
+        if (observationActive) {
+          updateObservationTiming(currentName, bestKey, nowPerf);
         }
       } else {
         lastLoggedName = null;
@@ -299,6 +326,9 @@ async function loop() {
         pendingName = null;
         pendingMood = null;
         pendingSince = 0;
+        if (observationActive) {
+          flushObservationTiming(nowPerf);
+        }
       }
     } else {
       if (moodEl) moodEl.textContent = "--";
@@ -311,6 +341,9 @@ async function loop() {
       pendingName = null;
       pendingMood = null;
       pendingSince = 0;
+      if (observationActive) {
+        flushObservationTiming(performance.now());
+      }
     }
   } catch (err) {
     console.error("Detection loop error:", err);
@@ -347,6 +380,163 @@ function addLogLine(name, mood) {
   const div = document.createElement("div");
   div.textContent = line;
   logsEl.prepend(div);
+}
+
+function formatDurationLabel(ms) {
+  if (!Number.isFinite(ms)) return "";
+  const total = Math.max(0, Math.round(ms / 1000));
+  const hh = Math.floor(total / 3600);
+  const mm = Math.floor((total % 3600) / 60);
+  const ss = total % 60;
+  if (hh > 0) return `${hh} ч ${String(mm).padStart(2, "0")} мин ${String(ss).padStart(2, "0")} сек`;
+  if (mm > 0) return `${mm} мин ${String(ss).padStart(2, "0")} сек`;
+  return `${ss} сек`;
+}
+
+function addDuration(name, mood, deltaMs) {
+  if (!observationDurations.has(name)) observationDurations.set(name, new Map());
+  const moodMap = observationDurations.get(name);
+  moodMap.set(mood, (moodMap.get(mood) || 0) + deltaMs);
+}
+
+function updateObservationTiming(name, mood, nowPerf) {
+  if (!observationCurrentName) {
+    observationCurrentName = name;
+    observationCurrentMood = mood;
+    observationCurrentAt = nowPerf;
+    return;
+  }
+
+  const delta = nowPerf - observationCurrentAt;
+  if (delta > 0) {
+    addDuration(observationCurrentName, observationCurrentMood, delta);
+  }
+
+  if (observationCurrentName !== name || observationCurrentMood !== mood) {
+    observationCurrentName = name;
+    observationCurrentMood = mood;
+  }
+  observationCurrentAt = nowPerf;
+}
+
+function flushObservationTiming(nowPerf) {
+  if (!observationCurrentName || !observationCurrentMood || !observationCurrentAt) return;
+  const delta = nowPerf - observationCurrentAt;
+  if (delta > 0) {
+    addDuration(observationCurrentName, observationCurrentMood, delta);
+  }
+  observationCurrentName = null;
+  observationCurrentMood = null;
+  observationCurrentAt = 0;
+}
+
+function topMoodFromMap(map) {
+  let bestMood = null;
+  let bestMs = null;
+  for (const [mood, ms] of map.entries()) {
+    if (bestMs === null || ms > bestMs) {
+      bestMs = ms;
+      bestMood = mood;
+    }
+  }
+  return { bestMood, bestMs };
+}
+
+function buildOverallMoodTotals() {
+  const totals = new Map();
+  for (const moods of observationDurations.values()) {
+    for (const [mood, ms] of moods.entries()) {
+      totals.set(mood, (totals.get(mood) || 0) + ms);
+    }
+  }
+  return totals;
+}
+
+function topMoodFromMap(map) {
+  let bestMood = null;
+  let bestCount = -1;
+  for (const [mood, count] of map.entries()) {
+    if (count > bestCount) {
+      bestCount = count;
+      bestMood = mood;
+    }
+  }
+  return { bestMood, bestCount };
+}
+
+function renderObservationResults() {
+  if (!observationResultsEl) return;
+  observationResultsEl.classList.remove("hidden");
+  const durationText = observationStart ? formatDurationLabel(Date.now() - observationStart) : "--";
+  if (observationDurationEl) observationDurationEl.textContent = `Длительность: ${durationText}`;
+
+  const overallTotals = buildOverallMoodTotals();
+  const overallTop = topMoodFromMap(overallTotals);
+  if (observationTopMoodEl) {
+    if (overallTop.bestMood) {
+      const label = formatDurationLabel(overallTop.bestMs);
+      observationTopMoodEl.textContent = label
+        ? `Самая частая эмоция за наблюдение: ${overallTop.bestMood} - ${label}`
+        : `Самая частая эмоция за наблюдение: ${overallTop.bestMood}`;
+    } else {
+      observationTopMoodEl.textContent = "Самая частая эмоция за наблюдение: --";
+    }
+  }
+
+  if (observationPeopleEl) {
+    observationPeopleEl.innerHTML = "";
+  }
+
+  if (observationDurations.size === 0) {
+    if (observationPeopleEl) observationPeopleEl.textContent = "Люди: --";
+    return;
+  }
+
+  for (const [name, moods] of observationDurations.entries()) {
+    const personTop = topMoodFromMap(moods);
+    const personBlock = document.createElement("div");
+    personBlock.textContent = name;
+    if (observationPeopleEl) observationPeopleEl.appendChild(personBlock);
+
+    for (const [mood, ms] of moods.entries()) {
+      const line = document.createElement("div");
+      line.textContent = `${mood} - ${formatDurationLabel(ms)}`;
+      if (observationPeopleEl) observationPeopleEl.appendChild(line);
+    }
+
+    if (personTop.bestMood) {
+      const topLine = document.createElement("div");
+      const label = formatDurationLabel(personTop.bestMs);
+      topLine.textContent = label
+        ? `Самая частая эмоция у ${name}: ${personTop.bestMood} - ${label}`
+        : `Самая частая эмоция у ${name}: ${personTop.bestMood}`;
+      if (observationPeopleEl) observationPeopleEl.appendChild(topLine);
+    }
+  }
+}
+
+function startObservation() {
+  observationActive = true;
+  observationStart = Date.now();
+  observationPeople = new Map();
+  observationCurrentName = null;
+  observationCurrentMood = null;
+  observationCurrentAt = 0;
+  observationDurations = new Map();
+  lastLoggedName = null;
+  lastLoggedMood = null;
+  pendingName = null;
+  pendingMood = null;
+  pendingSince = 0;
+  if (observationResultsEl) observationResultsEl.classList.add("hidden");
+  if (observationToggleBtn) observationToggleBtn.textContent = "Остановить наблюдение";
+}
+
+function stopObservation() {
+  observationActive = false;
+  flushObservationTiming(performance.now());
+  renderObservationResults();
+  if (observationToggleBtn) observationToggleBtn.textContent = "Начать наблюдение";
 }
 
 function loadRtspList() {
@@ -508,6 +698,30 @@ if (clearLogsBtn) {
   });
 }
 
+if (observationToggleBtn) {
+  observationToggleBtn.addEventListener("click", () => {
+    if (observationActive) {
+      stopObservation();
+    } else {
+      startObservation();
+    }
+  });
+}
+
+if (clearObservationBtn) {
+  clearObservationBtn.addEventListener("click", () => {
+    if (observationResultsEl) observationResultsEl.classList.add("hidden");
+    if (observationDurationEl) observationDurationEl.textContent = "Длительность: --";
+    if (observationTopMoodEl) observationTopMoodEl.textContent = "Самая частая эмоция за наблюдение: --";
+    if (observationPeopleEl) observationPeopleEl.textContent = "Люди: --";
+    observationPeople = new Map();
+    observationCurrentName = null;
+    observationCurrentMood = null;
+    observationCurrentAt = 0;
+    observationDurations = new Map();
+  });
+}
+
 if (deleteRtspBtn) {
   deleteRtspBtn.addEventListener("click", () => {
     const rtspUrl = rtspSelect?.value || "";
@@ -527,4 +741,3 @@ if (deleteRtspBtn) {
     }
   });
 }
-
