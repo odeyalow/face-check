@@ -105,13 +105,13 @@ function labelFromFilename(filename) {
 async function loadKnownFaces() {
   if (!recognitionReady) return;
   try {
-    const res = await fetch("/api/known");
+    const res = await fetch("/known/images.json");
     if (!res.ok) return;
-    const { files } = await res.json();
-    if (!Array.isArray(files) || files.length === 0) return;
+    const images = await res.json();
+    if (!Array.isArray(images) || images.length === 0) return;
 
     const labelMap = new Map();
-    files.forEach((file) => {
+    images.forEach((file) => {
       const label = labelFromFilename(file);
       if (!label) return;
       if (!labelMap.has(label)) labelMap.set(label, []);
