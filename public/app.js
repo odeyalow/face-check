@@ -20,6 +20,7 @@ let recognitionReady = false;
 let lastName = "--";
 let lastMood = "--";
 const faceSourceCanvas = document.createElement("canvas");
+let loopStarted = false;
 
 function bestExpression(expressions) {
   let bestKey = "neutral";
@@ -248,8 +249,15 @@ async function loop() {
 (async () => {
   await loadModels();
   await loadKnownFaces();
-  await startWebcam();
-  loop();
+  try {
+    await startWebcam();
+  } catch (_err) {
+    // Ignore webcam errors (insecure context or no device).
+  }
+  if (!loopStarted) {
+    loopStarted = true;
+    loop();
+  }
 })();
 
 function formatTime(date) {
@@ -279,11 +287,19 @@ if (connectRtspBtn) {
     if (!rtspUrl) return;
     localStorage.setItem("rtspUrl", rtspUrl);
     await startRtsp(rtspUrl);
+    if (!loopStarted) {
+      loopStarted = true;
+      loop();
+    }
   });
 }
 
 if (useWebcamBtn) {
   useWebcamBtn.addEventListener("click", async () => {
     await startWebcam();
+    if (!loopStarted) {
+      loopStarted = true;
+      loop();
+    }
   });
 }
