@@ -84,6 +84,11 @@ async function startRtsp(rtspUrl) {
     audio: false,
     disableGl: true
   });
+
+  if (streamCanvas.clientWidth && streamCanvas.clientHeight) {
+    streamCanvas.width = streamCanvas.clientWidth;
+    streamCanvas.height = streamCanvas.clientHeight;
+  }
 }
 
 async function loadModels() {
@@ -151,6 +156,10 @@ function syncOverlaySize() {
   const height = sourceEl === video ? video.videoHeight : (sourceEl.height || sourceEl.clientHeight);
 
   if (!width || !height) return false;
+  if (sourceEl === streamCanvas && (!streamCanvas.width || !streamCanvas.height)) {
+    streamCanvas.width = width;
+    streamCanvas.height = height;
+  }
   if (canvas.width !== width || canvas.height !== height) {
     canvas.width = width;
     canvas.height = height;
@@ -160,8 +169,8 @@ function syncOverlaySize() {
 
 function getDetectionSource() {
   if (sourceEl === video) return video;
-  const width = sourceEl.width || sourceEl.clientWidth;
-  const height = sourceEl.height || sourceEl.clientHeight;
+  const width = sourceEl.width || sourceEl.clientWidth || canvas.width;
+  const height = sourceEl.height || sourceEl.clientHeight || canvas.height;
   if (!width || !height) return null;
   if (faceSourceCanvas.width !== width || faceSourceCanvas.height !== height) {
     faceSourceCanvas.width = width;
