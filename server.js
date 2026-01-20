@@ -29,7 +29,28 @@ app.get("/api/known", (_req, res) => {
 });
 
 app.get("/known", (_req, res) => {
-  res.redirect("/api/known");
+  let files = [];
+  if (fs.existsSync(knownDir)) {
+    files = fs.readdirSync(knownDir)
+      .filter((file) => /\.(png|jpe?g)$/i.test(file));
+  }
+
+  const links = files
+    .map((file) => `<li><a href="/known/${encodeURIComponent(file)}">${file}</a></li>`)
+    .join("");
+
+  res.send(`<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Known Faces</title>
+  </head>
+  <body>
+    <h3>Known Faces</h3>
+    <ul>${links || "<li>No files</li>"}</ul>
+  </body>
+</html>`);
 });
 
 app.ws("/api/stream", (ws, req) => {
