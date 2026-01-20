@@ -66,6 +66,12 @@ function setLoadingStatus(isLoading) {
   if (mediaWrapEl) mediaWrapEl.classList.toggle("hidden", isLoading);
 }
 
+function syncAddButtonState() {
+  if (!addRtspBtn) return;
+  const hasUrl = Boolean(rtspInput && rtspInput.value.trim());
+  addRtspBtn.disabled = !hasUrl;
+}
+
 async function startWebcam() {
   if (player?.destroy) player.destroy();
   player = null;
@@ -424,6 +430,9 @@ if (addRtspBtn) {
       rtspNameInput.value = current ? current.name : "";
     }
     syncRtspSelect(list, rtspUrl);
+    if (rtspInput) rtspInput.value = "";
+    if (rtspNameInput) rtspNameInput.value = "";
+    syncAddButtonState();
   });
 }
 
@@ -444,6 +453,12 @@ if (rtspSelect) {
     }
   });
 }
+
+if (rtspInput) {
+  rtspInput.addEventListener("input", syncAddButtonState);
+}
+
+syncAddButtonState();
 
 if (connectRtspBtn) {
   connectRtspBtn.addEventListener("click", async () => {
