@@ -85,9 +85,15 @@ async function startRtsp(rtspUrl) {
     disableGl: true
   });
 
-  if (streamCanvas.clientWidth && streamCanvas.clientHeight) {
-    streamCanvas.width = streamCanvas.clientWidth;
-    streamCanvas.height = streamCanvas.clientHeight;
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline) {
+    if (streamCanvas.width > 0 && streamCanvas.height > 0) break;
+    await new Promise((res) => setTimeout(res, 100));
+  }
+
+  if (!streamCanvas.width || !streamCanvas.height) {
+    streamCanvas.width = 640;
+    streamCanvas.height = 480;
   }
 }
 
@@ -184,6 +190,14 @@ function getDetectionSource() {
 async function loop() {
   const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 });
 
+  frames++;
+  const now = performance.now();
+  if (now - lastTs >= 1000) {
+    fpsEl.textContent = String(frames);
+    frames = 0;
+    lastTs = now;
+  }
+
   if (!syncOverlaySize()) {
     setTimeout(loop, 120);
     return;
@@ -226,14 +240,6 @@ async function loop() {
     if (nameEl) nameEl.textContent = "--";
     lastMood = "--";
     lastName = "--";
-  }
-
-  frames++;
-  const now = performance.now();
-  if (now - lastTs >= 1000) {
-    fpsEl.textContent = String(frames);
-    frames = 0;
-    lastTs = now;
   }
 
   setTimeout(loop, 120);
