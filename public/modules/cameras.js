@@ -61,7 +61,10 @@ export function createCameraController({
   }
 
   async function startRtsp(rtspUrl) {
-    if (!rtspUrl || !window.loadPlayer) return;
+    if (!rtspUrl || !window.loadPlayer) {
+      setLoadingStatus(true, "Не удалось подключиться к RTSP", true);
+      return;
+    }
 
     stopWebcam();
     if (player?.destroy) player.destroy();
@@ -74,12 +77,17 @@ export function createCameraController({
     streamCanvas.classList.remove("hidden");
     if (onSourceChange) onSourceChange(streamCanvas);
 
-    player = await window.loadPlayer({
+    const playerTimeoutMs = 8000;
+    const playerPromise = window.loadPlayer({
       url: wsUrl,
       canvas: streamCanvas,
       audio: false,
       disableGl: true
     });
+    player = await Promise.race([
+      playerPromise,
+      new Promise((_, rej) => setTimeout(() => rej(new Error("player timeout")), playerTimeoutMs))
+    ]);
 
     const timeoutMs = 12000;
     const deadline = Date.now() + timeoutMs;

@@ -143,7 +143,7 @@ async function loadKnownFaces() {
       for (const url of urls) {
         const img = await faceapi.fetchImage(url);
         const detection = await faceapi
-          .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 }))
+          .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.4 }))
           .withFaceLandmarks()
           .withFaceDescriptor();
         if (detection) descriptors.push(detection.descriptor);
@@ -154,7 +154,7 @@ async function loadKnownFaces() {
     }
 
     if (labeledDescriptors.length) {
-      faceMatcher = new faceapi.FaceMatcher(labeledDescriptors, 0.6);
+      faceMatcher = new faceapi.FaceMatcher(labeledDescriptors, 0.7);
     }
   } catch (_err) {
     console.warn("Failed to load known faces.");
@@ -206,7 +206,7 @@ function getDetectionSource() {
 }
 
 async function loop() {
-  const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 });
+  const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.4 });
 
   try {
     frames++;
