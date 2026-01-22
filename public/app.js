@@ -4,9 +4,7 @@ import { createObservation } from "./modules/observation.js";
 const video = document.getElementById("video");
 const streamCanvas = document.getElementById("stream");
 const canvas = document.getElementById("overlay");
-const moodEl = document.getElementById("mood");
-const nameEl = document.getElementById("name");
-const confEl = document.getElementById("conf");
+const namesEl = document.getElementById("names");
 const fpsEl = document.getElementById("fps");
 const logsEl = document.getElementById("logs");
 const loadingStatusEl = document.getElementById("loadingStatus");
@@ -35,15 +33,19 @@ let faceMatcher = null;
 let recognitionReady = false;
 let lastName = "--";
 let lastMood = "--";
-let lastLoggedName = null;
-let lastLoggedMood = null;
-let pendingName = null;
-let pendingMood = null;
-let pendingSince = 0;
+const pendingByName = new Map();
+const lastLoggedMoodByName = new Map();
 let knownFacesLoading = false;
 let knownFacesLastAttempt = 0;
 const faceSourceCanvas = document.createElement("canvas");
 let loopStarted = false;
+const stableWindow = 6;
+const stableMinHits = 3;
+const stableKeepMs = 1500;
+const recentLabelFrames = [];
+const lastSeenByLabel = new Map();
+const lastMoodByLabel = new Map();
+const stableOrder = [];
 
 function moodLabel(key) {
   const map = {
@@ -221,73 +223,125 @@ async function loop() {
     const detectionSource = getDetectionSource();
     if (!detectionSource) return;
 
-    let detection = faceapi.detectSingleFace(detectionSource, opts);
+    let detection = faceapi.detectAllFaces(detectionSource, opts);
     if (recognitionReady) {
-      detection = detection.withFaceLandmarks().withFaceDescriptor();
+      detection = detection.withFaceLandmarks().withFaceDescriptors();
     }
-    const result = await detection.withFaceExpressions();
+    const results = await detection.withFaceExpressions();
 
     const ctx = canvas.getContext("2d");
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    if (result) {
-      const resized = faceapi.resizeResults(result, { width: canvas.width, height: canvas.height });
+    if (results && results.length > 0) {
+      const resized = faceapi.resizeResults(results, { width: canvas.width, height: canvas.height });
       faceapi.draw.drawDetections(canvas, resized);
 
-      const { bestKey, bestVal } = bestExpression(result.expressions);
       const nowPerf = performance.now();
-      if (moodEl) moodEl.textContent = moodLabel(bestKey);
-      if (confEl) confEl.textContent = (bestVal * 100).toFixed(1) + "%";
-      lastMood = bestKey;
-      let currentName = null;
-      if (recognitionReady && faceMatcher && nameEl) {
-        const match = faceMatcher.findBestMatch(result.descriptor);
-        if (match.label && match.label !== "unknown") {
-          nameEl.textContent = match.label;
-          lastName = match.label;
-          currentName = match.label;
-        } else {
-          nameEl.textContent = "--";
-          lastName = "--";
-        }
-      } else if (nameEl) {
-        nameEl.textContent = "--";
-        lastName = "--";
-      }
-
-      if (currentName) {
-        if (pendingName !== currentName || pendingMood !== bestKey) {
-          pendingName = currentName;
-          pendingMood = bestKey;
-          pendingSince = nowPerf;
-        } else if (nowPerf - pendingSince >= 3000) {
-          if (currentName !== lastLoggedName || bestKey !== lastLoggedMood) {
-            if (observation.isActive()) observation.addLogLine(currentName, bestKey);
-            lastLoggedName = currentName;
-            lastLoggedMood = bestKey;
+      const personMoods = new Map();
+      for (const result of results) {
+        if (!result.expressions) continue;
+        const { bestKey } = bestExpression(result.expressions);
+        if (recognitionReady && faceMatcher && result.descriptor) {
+          const match = faceMatcher.findBestMatch(result.descriptor);
+          if (match.label && match.label !== "unknown") {
+            if (!personMoods.has(match.label)) personMoods.set(match.label, bestKey);
           }
         }
-        observation.updateTiming(currentName, bestKey, nowPerf);
-      } else {
-        lastLoggedName = null;
-        lastLoggedMood = null;
-        pendingName = null;
-        pendingMood = null;
-        pendingSince = 0;
-        observation.flushTiming(nowPerf);
       }
+
+      const detectedNames = Array.from(personMoods.keys());
+      const uniqueFrameLabels = Array.from(new Set(detectedNames));
+      recentLabelFrames.push(uniqueFrameLabels);
+      if (recentLabelFrames.length > stableWindow) recentLabelFrames.shift();
+
+      for (const label of uniqueFrameLabels) {
+        lastSeenByLabel.set(label, nowPerf);
+        lastMoodByLabel.set(label, personMoods.get(label));
+      }
+
+      const counts = new Map();
+      for (const frameLabels of recentLabelFrames) {
+        for (const label of frameLabels) {
+          counts.set(label, (counts.get(label) || 0) + 1);
+        }
+      }
+
+      const stableLabels = [];
+      for (const [label, count] of counts.entries()) {
+        const lastSeen = lastSeenByLabel.get(label) || 0;
+        const recentlySeen = nowPerf - lastSeen <= stableKeepMs;
+        if (count >= stableMinHits || recentlySeen) stableLabels.push(label);
+      }
+      for (const label of stableLabels) {
+        if (!stableOrder.includes(label)) stableOrder.push(label);
+      }
+      for (let i = stableOrder.length - 1; i >= 0; i -= 1) {
+        if (!stableLabels.includes(stableOrder[i])) stableOrder.splice(i, 1);
+      }
+      const orderedLabels = stableOrder.slice();
+
+      if (namesEl) {
+        if (orderedLabels.length === 0) {
+          namesEl.textContent = "--";
+        } else {
+          namesEl.innerHTML = "";
+          for (const name of orderedLabels) {
+            const line = document.createElement("div");
+            const moodKey = lastMoodByLabel.get(name);
+            line.textContent = moodKey ? `${name}: ${moodLabel(moodKey)}` : `${name}: --`;
+            namesEl.appendChild(line);
+          }
+        }
+      }
+
+      let currentName = null;
+      let bestKey = null;
+      if (orderedLabels.length > 0) {
+        currentName = orderedLabels[0];
+        bestKey = lastMoodByLabel.get(currentName) || null;
+      }
+      lastName = currentName || "--";
+      lastMood = bestKey || "--";
+      const currentMoodMap = new Map();
+      for (const label of orderedLabels) {
+        const moodKey = lastMoodByLabel.get(label);
+        if (moodKey) currentMoodMap.set(label, moodKey);
+      }
+
+      if (observation.isActive()) {
+        for (const [name, moodKey] of currentMoodMap.entries()) {
+          const pending = pendingByName.get(name);
+          if (!pending || pending.mood !== moodKey) {
+            pendingByName.set(name, { mood: moodKey, since: nowPerf });
+          } else if (nowPerf - pending.since >= 3000) {
+            const lastLogged = lastLoggedMoodByName.get(name);
+            if (lastLogged !== moodKey) {
+              observation.addLogLine(name, moodKey);
+              lastLoggedMoodByName.set(name, moodKey);
+            }
+          }
+        }
+        for (const name of pendingByName.keys()) {
+          if (!currentMoodMap.has(name)) {
+            pendingByName.delete(name);
+            lastLoggedMoodByName.delete(name);
+          }
+        }
+      } else {
+        pendingByName.clear();
+        lastLoggedMoodByName.clear();
+      }
+
+      observation.updateFrame(currentMoodMap, nowPerf);
     } else {
-      if (moodEl) moodEl.textContent = "--";
-      if (confEl) confEl.textContent = "--";
-      if (nameEl) nameEl.textContent = "--";
+      recentLabelFrames.push([]);
+      if (recentLabelFrames.length > stableWindow) recentLabelFrames.shift();
+      if (namesEl) namesEl.textContent = "--";
       lastMood = "--";
       lastName = "--";
-      lastLoggedName = null;
-      lastLoggedMood = null;
-      pendingName = null;
-      pendingMood = null;
-      pendingSince = 0;
-      observation.flushTiming(performance.now());
+      pendingByName.clear();
+      lastLoggedMoodByName.clear();
+      observation.updateFrame(new Map(), performance.now());
     }
   } catch (err) {
     console.error("Detection loop error:", err);

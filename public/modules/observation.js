@@ -11,9 +11,8 @@
 }) {
   let active = false;
   let startTs = 0;
-  let currentName = null;
-  let currentMood = null;
-  let currentAt = 0;
+  let currentMoodByPerson = new Map();
+  let currentAtByPerson = new Map();
   let durations = new Map();
 
   function formatDurationLabel(ms) {
@@ -33,33 +32,46 @@
     moodMap.set(mood, (moodMap.get(mood) || 0) + deltaMs);
   }
 
-  function updateTiming(name, mood, nowPerf) {
+  function updateFrame(personMoods, nowPerf) {
     if (!active) return;
-    if (!currentName) {
-      currentName = name;
-      currentMood = mood;
-      currentAt = nowPerf;
-      return;
+    const seen = new Set(personMoods.keys());
+
+    for (const [name, lastMood] of currentMoodByPerson.entries()) {
+      if (!seen.has(name)) {
+        const lastAt = currentAtByPerson.get(name) || nowPerf;
+        const delta = nowPerf - lastAt;
+        if (delta > 0) addDuration(name, lastMood, delta);
+        currentMoodByPerson.delete(name);
+        currentAtByPerson.delete(name);
+      }
     }
 
-    const delta = nowPerf - currentAt;
-    if (delta > 0) addDuration(currentName, currentMood, delta);
-
-    if (currentName !== name || currentMood !== mood) {
-      currentName = name;
-      currentMood = mood;
+    for (const [name, mood] of personMoods.entries()) {
+      if (!currentMoodByPerson.has(name)) {
+        currentMoodByPerson.set(name, mood);
+        currentAtByPerson.set(name, nowPerf);
+        continue;
+      }
+      const prevMood = currentMoodByPerson.get(name);
+      const prevAt = currentAtByPerson.get(name) || nowPerf;
+      if (prevMood !== mood) {
+        const delta = nowPerf - prevAt;
+        if (delta > 0) addDuration(name, prevMood, delta);
+        currentMoodByPerson.set(name, mood);
+        currentAtByPerson.set(name, nowPerf);
+      }
     }
-    currentAt = nowPerf;
   }
 
-  function flushTiming(nowPerf) {
+  function flushAll(nowPerf) {
     if (!active) return;
-    if (!currentName || !currentMood || !currentAt) return;
-    const delta = nowPerf - currentAt;
-    if (delta > 0) addDuration(currentName, currentMood, delta);
-    currentName = null;
-    currentMood = null;
-    currentAt = 0;
+    for (const [name, mood] of currentMoodByPerson.entries()) {
+      const lastAt = currentAtByPerson.get(name) || nowPerf;
+      const delta = nowPerf - lastAt;
+      if (delta > 0) addDuration(name, mood, delta);
+    }
+    currentMoodByPerson = new Map();
+    currentAtByPerson = new Map();
   }
 
   function topMoodFromMap(map) {
@@ -175,9 +187,8 @@
   function start() {
     active = true;
     startTs = Date.now();
-    currentName = null;
-    currentMood = null;
-    currentAt = 0;
+    currentMoodByPerson = new Map();
+    currentAtByPerson = new Map();
     durations = new Map();
     if (observationResultsEl) observationResultsEl.classList.add("hidden");
     if (observationToggleBtn) observationToggleBtn.textContent = "Остановить наблюдение";
@@ -185,7 +196,7 @@
 
   function stop() {
     active = false;
-    flushTiming(performance.now());
+    flushAll(performance.now());
     renderResults();
     if (observationToggleBtn) observationToggleBtn.textContent = "Начать наблюдение";
   }
@@ -202,9 +213,8 @@
     if (observationPeopleEl) observationPeopleEl.textContent = "Люди: --";
     if (observationPeopleSelectEl) observationPeopleSelectEl.classList.add("hidden");
     durations = new Map();
-    currentName = null;
-    currentMood = null;
-    currentAt = 0;
+    currentMoodByPerson = new Map();
+    currentAtByPerson = new Map();
   }
 
   function addLogLine(name, mood) {
@@ -227,8 +237,8 @@
     isActive: () => active,
     start,
     stop,
-    updateTiming,
-    flushTiming,
+    updateFrame,
+    flushAll,
     addLogLine
   };
 }
